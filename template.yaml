@@ -1,0 +1,143 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Resources:
+  RestaurantAFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs14.x
+      Handler: build/lambdas/restaurantA/index.handler
+      CodeUri: ./
+      Events:
+        Trigger:
+          Type: CloudWatchEvent
+          Properties:
+            Pattern:
+              source:
+                - custom.OrderManager
+              detail-type:
+                - OrderCreated
+
+  RestaurantBFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs14.x
+      Handler: build/lambdas/restaurantB/index.handler
+      CodeUri: ./
+
+  CreateOrderFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs14.x
+      Handler: build/lambdas/orderManager/index.createOrder
+      CodeUri: ./
+      Policies:
+        - Statement:
+            - Sid: EventBridgePutEvents
+              Effect: 'Allow'
+              Action:
+                - 'events:PutEvents'
+              Resource: '*'
+      Events:
+        CreateOrderEvent:
+          Type: Api
+          Properties:
+            Path: /orders
+            Method: POST
+
+  UpdateOrderFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs14.x
+      Handler: build/lambdas/orderManager/index.updateOrder
+      CodeUri: ./
+      Policies:
+        - Statement:
+            - Sid: EventBridgePutEvents
+              Effect: 'Allow'
+              Action:
+                - 'events:PutEvents'
+              Resource: '*'
+      Events:
+        UpdateOrderEvent:
+          Type: Api
+          Properties:
+            Path: /orders
+            Method: PATCH
+
+  DeleteOrderFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs14.x
+      Handler: build/lambdas/orderManager/index.deleteOrder
+      CodeUri: ./
+      Policies:
+        - Statement:
+            - Sid: EventBridgePutEvents
+              Effect: 'Allow'
+              Action:
+                - 'events:PutEvents'
+              Resource: '*'
+      Events:
+        DeleteOrderEvent:
+          Type: Api
+          Properties:
+            Path: /orders
+            Method: DELETE
+
+  NotificationsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs14.x
+      Handler: 'build/lambdas/notifications/index.handler'
+      CodeUri: ./
+      Policies:
+        - Statement:
+            - Sid: SESEmailPolicy
+              Effect: 'Allow'
+              Action:
+                - ses:SendEmail
+                - ses:SendRawEmail
+                - ses:SendTemplatedEmail
+              Resource: '*'
+
+      Events:
+        Trigger:
+          Type: CloudWatchEvent
+          Properties:
+            Pattern:
+              source:
+                - custom.OrderManager
+              detail-type:
+                - OrderCreated
+                - OrderUpdated
+                - OrderDeleted
+
+  # NotificationsInvokePermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     Action: lambda:InvokeFunction
+  #     FunctionName: !Ref NotificationsFunction
+  #     Principal: events.amazonaws.com
+  #     SourceArn: !GetAtt NotificationsEventRule.Arn
+
+  # NotificationsEventRule:
+  #   Type: AWS::Events::Rule
+  #   Properties:
+  #     Description: 'Order for Notifications'
+  #     EventPattern:
+  #       Source:
+  #         - custom.OrderManager
+  #       detail-type:
+  #         - OrderCreated
+  #       detail:
+  #         restaurantName:
+  #           - 'Notifications'
+  #     Targets:
+  #       - Arn: !GetAtt NotificationsFunction.Arn
+  #         Id: 'RuleId'
+
+Outputs:
+  TestAPIs:
+    Description: 'API gateway for order resources'
+    Value: !Sub 'https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/dev/orders'
